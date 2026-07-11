@@ -1,0 +1,153 @@
+// Prisma Schema for PostgreSQL
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Category {
+  FOOD
+  SHOPPING
+  TRAVEL
+  BILLS
+  UTILITIES
+  HEALTHCARE
+  INSURANCE
+  ENTERTAINMENT
+  EDUCATION
+  INVESTMENT
+  SALARY
+  RENT
+  EMI
+  TAX
+  OTHERS
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String
+  fullName        String
+  role            Role           @default(USER)
+  otpCode         String?
+  otpExpiresAt    DateTime?
+  isVerified      Boolean        @default(false)
+  resetToken      String?
+  resetExpiresAt  DateTime?
+  creditScore     Int            @default(650)
+  currency        String         @default("USD")
+  riskProfile     String         @default("MODERATE")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  transactions    Transaction[]
+  savingsGoals    SavingsGoal[]
+  loans           Loan[]
+  aiInsights      AIInsight[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  sessions        Session[]
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String
+  merchant    String?
+  amount      Float
+  category    Category @default(OTHERS)
+  isPending   Boolean  @default(false)
+  isFavorite  Boolean  @default(false)
+  notes       String?
+  tags        String[] @default([])
+  importFile  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SavingsGoal {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  targetAmount      Float
+  currentAmount     Float    @default(0.0)
+  monthlyContribution Float  @default(0.0)
+  targetDate        DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Loan {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  principal       Float
+  interestRate    Float // Annual percentage
+  tenureMonths    Int
+  startDate       DateTime
+  extraMonthlyPay Float    @default(0.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AIInsight {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  category    String // SUBSCRIPTION, OVERSPENDING, LIFESTYLE, BUDGET
+  severity    String // HIGH, MEDIUM, LOW
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  type        String // BILL_REMINDER, BUDGET_EXCEEDED, INSIGHT, GENERAL
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
+
+model AdminSettings {
+  id                 String   @id @default("global_settings")
+  maintenanceMode    Boolean  @default(false)
+  signupAllowed      Boolean  @default(true)
+  freeTierLimit      Float    @default(500.0)
+  updatedAt          DateTime @updatedAt
+}

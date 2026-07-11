@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+*.log
+__pycache__/
+*.pyc
+.cache/
+server/node_modules/
+server/dist/
+.idea/
+.vscode/
