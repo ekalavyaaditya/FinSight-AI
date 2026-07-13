@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import axios from 'axios';
 
+export type RiskProfile = 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE';
+
 interface User {
   id: string;
   email: string;
@@ -8,7 +10,7 @@ interface User {
   role: 'USER' | 'ADMIN';
   creditScore: number;
   currency: string;
-  riskProfile: 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE';
+  riskProfile: RiskProfile;
 }
 
 interface AuthState {
@@ -20,7 +22,7 @@ interface AuthState {
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (fullName: string, currency: string, riskProfile: string) => Promise<void>;
+  updateProfile: (fullName: string, currency: string, riskProfile: RiskProfile) => Promise<void>;
   checkSession: () => Promise<void>;
 }
 
@@ -142,3 +144,4 @@ axios.interceptors.request.use((config) => {
   }
   return config;
 }, (err) => Promise.reject(err));
+

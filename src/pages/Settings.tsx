@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
+import type { RiskProfile } from '../store/authStore';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { User, Settings as SettingsIcon, AlertCircle, Trash2, CheckCircle2 } from 'lucide-react';
@@ -10,7 +11,7 @@ export default function Settings() {
 
   const [name, setName] = useState(user?.fullName || '');
   const [currency, setCurrency] = useState(user?.currency || 'USD');
-  const [risk, setRisk] = useState(user?.riskProfile || 'MODERATE');
+  const [risk, setRisk] = useState<RiskProfile>(user?.riskProfile || 'MODERATE');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -89,7 +90,7 @@ export default function Settings() {
               <label className="text-xs uppercase font-bold text-neutral-400">Risk profile</label>
               <select
                 value={risk}
-                onChange={(e) => setRisk(e.target.value)}
+                onChange={(e) => setRisk(e.target.value as RiskProfile)}
                 className="w-full glass py-2.5 px-3.5 rounded-xl text-sm focus:outline-none font-medium text-primary"
               >
                 <option value="CONSERVATIVE">Conservative - High Debt Fixed Income</option>
@@ -147,3 +148,4 @@ export default function Settings() {
     </div>
   );
 }
+

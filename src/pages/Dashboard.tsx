@@ -183,7 +183,7 @@ export default function Dashboard() {
           <button onClick={fetchData} className="glass p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all text-neutral-500 hover:text-foreground">
             <RefreshCw className="w-4 h-4" />
           </button>
-          <Link to="/import" className="glass py-2 px-4 rounded-full text-sm font-medium text-white bg-primary hover:bg-primary-dark transition-all shadow-premium flex items-center gap-1.5">
+          <Link to="/import" className="glass py-2 px-4 rounded-full text-sm font-medium hover:text-white text-primary bg-primary hover:bg-primary-dark transition-all shadow-premium flex items-center gap-1.5">
             <Plus className="w-4 h-4" /> Import Statement
           </Link>
         </div>

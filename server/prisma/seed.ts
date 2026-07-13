@@ -173,7 +173,7 @@ async function main() {
     });
 
     // Add AI Insights
-    await prisma.aiInsight.createMany({
+    await prisma.aIInsight.createMany({
       data: [
         {
           userId: testUser.id,
