@@ -8,7 +8,7 @@
     "dev": "nodemon --watch '*' --exec \"ts-node\" server.ts",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "test": "jest --detectOpenHandles --forceExit"
+    "test": "jest --preset ts-jest --detectOpenHandles --forceExit"
   },
   "dependencies": {
     "@prisma/client": "^5.11.0",
