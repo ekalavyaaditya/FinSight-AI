@@ -20,6 +20,8 @@ export default function TransactionsList() {
   const [category, setCategory] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pageInput, setPageInput] = useState('1');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Custom manual modal toggles
@@ -36,7 +38,7 @@ export default function TransactionsList() {
           search,
           category,
           page,
-          limit: 10,
+          limit: pageSize,
         },
       });
       setTransactions(res.data.transactions || []);
@@ -50,7 +52,21 @@ export default function TransactionsList() {
 
   useEffect(() => {
     fetchTransactions();
-  }, [search, category, page]);
+  }, [search, category, page, pageSize]);
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const handlePageSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const requestedPage = Number(pageInput);
+    if (!Number.isInteger(requestedPage)) return;
+
+    const nextPage = Math.min(totalPages, Math.max(1, requestedPage));
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  };
 
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,7 +151,7 @@ export default function TransactionsList() {
           </a>
           <button
             onClick={() => setModalOpen(true)}
-            className="glass py-2 px-4 rounded-full text-sm font-medium text-white bg-primary hover:bg-primary-dark transition-all flex items-center gap-1.5"
+            className="glass py-2 px-4 rounded-full text-sm font-medium text bg-primary hover:text-white hover:bg-primary-dark transition-all flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" /> Record Transaction
           </button>
@@ -258,7 +274,23 @@ export default function TransactionsList() {
 
         {/* Dynamic Pagination Footer */}
         <div className="p-4 border-t border-border flex justify-between items-center bg-neutral-50/30 dark:bg-neutral-950/20">
-          <p className="text-xs text-neutral-400">Page {page} of {totalPages}</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-neutral-400">Page {page} of {totalPages}</p>
+            <label htmlFor="transaction-page-size" className="text-xs text-neutral-400">Rows</label>
+            <select
+              id="transaction-page-size"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="glass rounded-lg px-2 py-2 text-sm focus:outline-none"
+            >
+              {[10, 20, 50, 100].map((size) => (
+                <option key={size} value={size}>{size} per page</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -267,6 +299,26 @@ export default function TransactionsList() {
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
+            <form onSubmit={handlePageSubmit} className="flex items-center gap-1.5">
+              <label htmlFor="transaction-page" className="sr-only">Go to page</label>
+              <input
+                id="transaction-page"
+                type="number"
+                min={1}
+                max={totalPages}
+                step={1}
+                required
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                className="w-16 glass rounded-lg px-2 py-2 text-center text-sm focus:outline-none focus:border-primary/50"
+              />
+              <button
+                type="submit"
+                className="px-3 py-2 glass rounded-lg text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all"
+              >
+                Go
+              </button>
+            </form>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}

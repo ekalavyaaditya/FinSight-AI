@@ -10,8 +10,6 @@ import {
   bulkUpdateTransactions,
   bulkDeleteTransactions,
   exportTransactionsCSV,
-  saveMerchantRule,
-  getMerchantRules,
 } from '../controllers/transactions';
 import { authenticateJWT } from '../middleware/auth';
 import { apiRateLimiter } from '../middleware/security';
@@ -35,10 +33,6 @@ router.post('/', createTransaction as any);
 router.put('/bulk', bulkUpdateTransactions as any);
 router.delete('/bulk', bulkDeleteTransactions as any);
 router.get('/export/csv', exportTransactionsCSV as any);
-
-// Merchant Confirmation Memory Rules
-router.post('/rules', saveMerchantRule as any);
-router.get('/rules', getMerchantRules as any);
 
 router.put('/:id', updateTransaction as any);
 router.delete('/:id', deleteTransaction as any);

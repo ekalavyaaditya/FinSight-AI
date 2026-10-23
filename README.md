@@ -66,7 +66,14 @@ cd ai
 python -m venv venv
 venv\Scripts\activate       # or source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
-python -m uvicorn main:app --reload --port 8000
+# Windows PowerShell (stable launch; avoids recursively scanning the venv)
+python -m uvicorn main:app --port 8000
+
+# macOS/Linux
+python -m uvicorn main:app --port 8000
+
+# Optional auto-reload for development, when WatchFiles is available:
+python -m uvicorn main:app --reload --reload-dir . --reload-exclude "venv/**" --port 8000
 ```
 
 ### 4. Frontend Application

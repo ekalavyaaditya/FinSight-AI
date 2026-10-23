@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
@@ -61,6 +62,45 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
       return;
     }
 
+    const seenFileHashes = new Map<string, string>();
+    const fileHashes = new Map<Express.Multer.File, string>();
+    const duplicateFiles: string[] = [];
+    for (const file of files) {
+      const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+      if (seenFileHashes.has(fileHash)) {
+        duplicateFiles.push(file.originalname);
+      } else {
+        seenFileHashes.set(fileHash, file.originalname);
+      }
+      fileHashes.set(file, fileHash);
+    }
+
+    if (duplicateFiles.length > 0) {
+      res.status(400).json({
+        error: `Duplicate statement file${duplicateFiles.length === 1 ? '' : 's'} detected in this batch: ${duplicateFiles.join(', ')}. Each file can only be uploaded once.`,
+        duplicateFiles,
+      });
+      return;
+    }
+
+    const fileHashTags = [...fileHashes.values()].map(hash => `statement-sha256:${hash}`);
+    const previouslyImported = await prisma.transaction.findMany({
+      where: { userId, tags: { hasSome: fileHashTags } },
+      select: { tags: true },
+    });
+    const previouslyImportedTags = new Set(previouslyImported.flatMap(transaction => transaction.tags));
+    const previouslyImportedFiles = files
+      .filter(file => previouslyImportedTags.has(`statement-sha256:${fileHashes.get(file)}`))
+      .map(file => file.originalname);
+
+    if (previouslyImportedFiles.length > 0) {
+      res.status(409).json({
+        error: `This statement file${previouslyImportedFiles.length === 1 ? ' has' : 's have'} already been imported: ${previouslyImportedFiles.join(', ')}.`,
+        duplicateFiles: previouslyImportedFiles,
+      });
+      return;
+    }
+
     let grandTotalParsed = 0;
     let grandInsertedCount = 0;
     let grandDuplicateCount = 0;
@@ -85,6 +125,7 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
     for (const file of files) {
       const { buffer, originalname } = file;
       const lowerName = originalname.toLowerCase();
+      const fileHashTag = `statement-sha256:${fileHashes.get(file)}`;
 
       let parseOutput: StatementParseOutput;
 
@@ -136,6 +177,7 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
         .filter(t => !isNaN(t));
 
       let existingKeySet = new Set<string>();
+      const existingTransactionsByKey = new Map<string, { id: string; tags: string[] }>();
       if (validDates.length > 0) {
         const minDate = new Date(Math.min(...validDates) - 86400000);
         const maxDate = new Date(Math.max(...validDates) + 86400000);
@@ -145,14 +187,34 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
             date: { gte: minDate, lte: maxDate },
           },
           select: {
+            id: true,
             amount: true,
             description: true,
             date: true,
+            tags: true,
+            notes: true,
           },
         });
-        existingKeySet = new Set(
-          existingList.map(e => `${e.amount}_${e.description.trim()}_${new Date(e.date).toISOString().slice(0, 10)}`)
-        );
+        const existingDedupKeys = existingList.map(e => {
+          let amount = e.amount;
+          if (e.notes) {
+            try {
+              const metadata = JSON.parse(e.notes);
+              if (metadata.transactionType === 'debit') amount = -Math.abs(amount);
+              if (metadata.transactionType === 'credit') amount = Math.abs(amount);
+            } catch {
+              // Keep the stored sign for older plain-text notes.
+            }
+          }
+          return `${amount}_${e.description.trim()}_${new Date(e.date).toISOString().slice(0, 10)}`;
+        });
+        existingKeySet = new Set(existingDedupKeys);
+        existingList.forEach((e, index) => {
+          existingTransactionsByKey.set(
+            existingDedupKeys[index],
+            { id: e.id, tags: e.tags },
+          );
+        });
       }
 
       const toCreate: Array<{
@@ -166,6 +228,7 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
         tags: string[];
         importFile: string;
       }> = [];
+      let fileHashRecorded = false;
 
       for (const tx of parseOutput.transactions) {
         allNormalizedTransactions.push(tx);
@@ -176,7 +239,8 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
 
         const txDate = new Date(tx.transactionDate);
         const dateKey = !isNaN(txDate.getTime()) ? txDate.toISOString().slice(0, 10) : tx.transactionDate;
-        const dedupKey = `${tx.amount}_${tx.description.trim()}_${dateKey}`;
+        const signedAmount = tx.transactionType === 'debit' ? -Math.abs(tx.amount) : Math.abs(tx.amount);
+        const dedupKey = `${signedAmount}_${tx.description.trim()}_${dateKey}`;
 
         if (!existingKeySet.has(dedupKey)) {
           existingKeySet.add(dedupKey); // Also prevents intra-file duplicates
@@ -203,6 +267,10 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
             `rail:${tx.paymentMethod}`,
             `entity:${tx.entityType}`,
           ];
+          if (!fileHashRecorded) {
+            tags.push(fileHashTag);
+            fileHashRecorded = true;
+          }
           if (tx.needsReview) tags.push('status:needsReview');
 
           toCreate.push({
@@ -210,7 +278,7 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
             date: !isNaN(txDate.getTime()) ? txDate : new Date(),
             description: tx.description,
             merchant: tx.entityName || tx.description.split(' ')[0],
-            amount: tx.amount,
+            amount: signedAmount,
             category: mapToPrismaCategory(tx.category),
             notes: JSON.stringify(metaPayload),
             tags,
@@ -219,6 +287,15 @@ export const uploadStatement = async (req: AuthenticatedRequest, res: Response):
           fileInserted++;
         } else {
           fileDuplicates++;
+          const existingTransaction = existingTransactionsByKey.get(dedupKey);
+          if (!fileHashRecorded && existingTransaction && !existingTransaction.tags.includes(fileHashTag)) {
+            await prisma.transaction.update({
+              where: { id: existingTransaction.id },
+              data: { tags: { push: fileHashTag } },
+            });
+            existingTransaction.tags.push(fileHashTag);
+            fileHashRecorded = true;
+          }
         }
       }
 
@@ -408,10 +485,23 @@ export const getTransactionsSummary = async (req: AuthenticatedRequest, res: Res
 
     const categoryMap: { [cat: string]: number } = {};
     const dailyMap: { [dateStr: string]: number } = {};
+    const dailyIncomeMap: { [dateStr: string]: number } = {};
     const monthlyMap: { [month: string]: number } = {};
 
     transactions.forEach((tx) => {
-      const amt = tx.amount;
+      let txMetadata: any = {};
+      if (tx.notes) {
+        try {
+          txMetadata = JSON.parse(tx.notes);
+        } catch {
+          // Existing transactions may use notes as plain text.
+        }
+      }
+
+      // Older statement imports stored absolute amounts. Use the parser's
+      // transaction type metadata to keep those debits in outbound totals.
+      const isOutflow = tx.amount < 0 || (tx.amount > 0 && txMetadata.transactionType === 'debit');
+      const amt = isOutflow ? -Math.abs(tx.amount) : Math.abs(tx.amount);
       const d = new Date(tx.date);
       const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
       const monthStr = dateStr ? dateStr.slice(0, 7) : '';
@@ -419,13 +509,17 @@ export const getTransactionsSummary = async (req: AuthenticatedRequest, res: Res
       if (amt > 0) {
         totalIncome += amt;
         inflowCount++;
+        if (dateStr) {
+          dailyIncomeMap[dateStr] = (dailyIncomeMap[dateStr] || 0) + amt;
+        }
       } else {
         const absAmt = Math.abs(amt);
         totalExpenses += absAmt;
         outflowCount++;
 
         // Category breakdown
-        categoryMap[tx.category] = (categoryMap[tx.category] || 0) + absAmt;
+        const category = txMetadata.category || tx.category;
+        categoryMap[category] = (categoryMap[category] || 0) + absAmt;
 
         // Daily spend
         if (dateStr) {
@@ -439,15 +533,8 @@ export const getTransactionsSummary = async (req: AuthenticatedRequest, res: Res
       }
 
       // Check for statement balance in notes if provided by parser
-      if (tx.notes) {
-        try {
-          const parsedNotes = JSON.parse(tx.notes);
-          if (parsedNotes.balance !== undefined && !isNaN(Number(parsedNotes.balance))) {
-            latestStatementBalance = Number(parsedNotes.balance);
-          }
-        } catch {
-          // Plain text notes
-        }
+      if (txMetadata.balance !== undefined && !isNaN(Number(txMetadata.balance))) {
+        latestStatementBalance = Number(txMetadata.balance);
       }
     });
 
@@ -479,7 +566,7 @@ export const getTransactionsSummary = async (req: AuthenticatedRequest, res: Res
     const latestTxDate = allTxDates.length > 0 ? allTxDates[allTxDates.length - 1] : null;
     const anchorDate = latestTxDate ? new Date(latestTxDate + 'T12:00:00Z') : new Date();
 
-    const dailySpending: Array<{ day: number; date: string; amount: number }> = [];
+    const dailySpending: Array<{ day: number; date: string; amount: number; income: number }> = [];
     for (let i = 27; i >= 0; i--) {
       const d = new Date(anchorDate);
       d.setDate(d.getDate() - i);
@@ -488,6 +575,7 @@ export const getTransactionsSummary = async (req: AuthenticatedRequest, res: Res
         day: d.getDate(),
         date: dStr,
         amount: parseFloat((dailyMap[dStr] || 0).toFixed(2)),
+        income: parseFloat((dailyIncomeMap[dStr] || 0).toFixed(2)),
       });
     }
 
@@ -697,47 +785,6 @@ export const deleteTransaction = async (req: AuthenticatedRequest, res: Response
     res.status(200).json({ message: 'Transaction deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to delete transaction' });
-  }
-};
-
-// User Confirmed Rules Endpoints
-export const saveMerchantRule = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const { pattern, entityName, entityType, category, subcategory } = req.body;
-    if (!pattern || !entityName || !category) {
-      res.status(400).json({ error: 'Missing required rule parameters: pattern, entityName, category' });
-      return;
-    }
-    MerchantCatalog.saveConfirmedRule(
-      userId,
-      pattern,
-      entityName,
-      entityType || 'merchant',
-      category,
-      subcategory || 'General'
-    );
-    res.status(201).json({ message: 'Merchant mapping rule successfully persisted' });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to save merchant mapping rule' });
-  }
-};
-
-export const getMerchantRules = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const rules = MerchantCatalog.getConfirmedRules(userId);
-    res.status(200).json({ rules });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to retrieve merchant mapping rules' });
   }
 };
 

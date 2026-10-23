@@ -8,7 +8,6 @@ import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import ImportStatement from './pages/ImportStatement';
 import TransactionsList from './pages/TransactionsList';
 import SavingsPlanner from './pages/SavingsPlanner';
 import EMIPlanner from './pages/EMIPlanner';
@@ -22,7 +21,6 @@ import VoiceAssistant from './components/VoiceAssistant';
 // Lucide Icons
 import {
   LayoutDashboard,
-  Upload,
   LineChart,
   Target,
   Calculator,
@@ -58,10 +56,10 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 20000); // refresh notifications every 20s
-    return () => clearInterval(interval);
-  }, []);
+    if (!user?.id) return;
+
+    void fetchNotifications(user.id);
+  }, [user?.id, fetchNotifications]);
 
   const handleLogout = async () => {
     await logout();
@@ -70,7 +68,6 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard className="w-4.5 h-4.5" /> },
-    { to: '/import', label: 'Import Statement', icon: <Upload className="w-4.5 h-4.5" /> },
     { to: '/transactions', label: 'Ledger Registry', icon: <LineChart className="w-4.5 h-4.5" /> },
     { to: '/savings', label: 'Savings Planner', icon: <Target className="w-4.5 h-4.5" /> },
     { to: '/loans', label: 'EMI Optimizer', icon: <Calculator className="w-4.5 h-4.5" /> },
@@ -237,7 +234,6 @@ export default function App() {
 
         {/* Protected Dashboard features routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/import" element={<ProtectedRoute><ImportStatement /></ProtectedRoute>} />
         <Route path="/transactions" element={<ProtectedRoute><TransactionsList /></ProtectedRoute>} />
         <Route path="/savings" element={<ProtectedRoute><SavingsPlanner /></ProtectedRoute>} />
         <Route path="/loans" element={<ProtectedRoute><EMIPlanner /></ProtectedRoute>} />

@@ -167,10 +167,6 @@ export class MerchantCatalog {
     USER_CONFIRMED_RULES.set(userId, filtered);
   }
 
-  static getConfirmedRules(userId: string): ConfirmedRule[] {
-    return USER_CONFIRMED_RULES.get(userId) || [];
-  }
-
   static parseNarration(narration: string): ParsedNarration {
     const clean = narration.trim();
 

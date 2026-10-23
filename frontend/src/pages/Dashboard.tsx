@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import StatementImport from '../components/StatementImport';
 import {
   TrendingUp,
   TrendingDown,
@@ -41,7 +42,7 @@ interface DashboardSummary {
   totalCount: number;
   expenseRisk: string;
   categoryBreakdown: Array<{ name: string; value: number }>;
-  dailySpending: Array<{ day: number; date: string; amount: number }>;
+  dailySpending: Array<{ day: number; date: string; amount: number; income: number }>;
   monthlyTrends: Array<{ month: string; amount: number }>;
   currency: string;
 }
@@ -49,14 +50,15 @@ interface DashboardSummary {
 const COLORS = ['#0070f3', '#00DF89', '#FF4D4D', '#F5A623', '#7928CA', '#0051af', '#ff0080'];
 
 export default function Dashboard() {
+  const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [insights, setInsights] = useState<any[]>([]);
   const [predictions, setPredictions] = useState<any>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [summaryRes, txRes, insightRes, predRes] = await Promise.all([
         axios.get('/api/transactions/summary'),
@@ -72,7 +74,7 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Failed to load dashboard parameters:', err);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -113,16 +115,23 @@ export default function Dashboard() {
   const pieData = summary?.categoryBreakdown || [];
   const barData = getBarData();
   const dailySpending = summary?.dailySpending || [];
-  const maxDailySpend = Math.max(0, ...dailySpending.map((d) => d.amount));
 
-  const getCellBg = (amt: number) => {
-    if (amt <= 0) return 'bg-neutral-100 dark:bg-neutral-900 border border-border text-neutral-400';
-    if (maxDailySpend <= 0) return 'bg-blue-100 dark:bg-blue-950 text-blue-800';
-    const ratio = amt / maxDailySpend;
-    if (ratio < 0.3) return 'bg-blue-100 dark:bg-blue-950 text-blue-800 border border-blue-500/20';
-    if (ratio < 0.7) return 'bg-blue-300 dark:bg-blue-800 text-blue-900 dark:text-blue-100 border border-blue-500/30';
-    return 'bg-primary text-white font-bold shadow-sm';
+  const getCellPercentages = (spent: number, earned: number) => {
+    const safeSpent = Math.max(0, spent);
+    const safeEarned = Math.max(0, earned);
+    const total = safeSpent + safeEarned;
+
+    if (total === 0) return { spent: 0, earned: 0 };
+    const spentPercent = (safeSpent / total) * 100;
+    return { spent: spentPercent, earned: 100 - spentPercent };
   };
+
+  const getCellBg = (spentPercent: number, earnedPercent: number) => ({
+    backgroundImage:
+      spentPercent + earnedPercent === 0
+        ? 'none'
+        : `linear-gradient(90deg, rgba(239, 68, 68, 0.62) 0%, rgba(239, 68, 68, 0.62) ${spentPercent}%, rgba(16, 185, 129, 0.62) ${spentPercent}%, rgba(16, 185, 129, 0.62) 100%)`,
+  });
 
   if (loading) {
     return (
@@ -151,12 +160,12 @@ export default function Dashboard() {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
-          <Link
-            to="/import"
+          <button
+            onClick={() => setShowImport(true)}
             className="glass py-2 px-4 rounded-full text-sm font-medium hover:text-white text-primary bg-primary hover:bg-primary-dark transition-all shadow-premium flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" /> Import Statement
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -294,9 +303,9 @@ export default function Dashboard() {
                 <p className="text-xs text-neutral-400 font-light mt-1 max-w-sm">
                   Upload bank statements to view machine-learning expense trends and predictive spending forecasts.
                 </p>
-                <Link to="/import" className="mt-4 text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                <button onClick={() => setShowImport(true)} className="mt-4 text-xs font-semibold text-primary hover:underline flex items-center gap-1">
                   Upload Statement <ArrowUpRight className="w-3.5 h-3.5" />
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -374,7 +383,7 @@ export default function Dashboard() {
               <h3 className="text-lg font-bold">Spending Density Grid</h3>
               <p className="text-xs text-neutral-400 font-light mt-0.5">
                 {dailySpending.length > 0
-                  ? `Daily outflow intensity (${dailySpending[0].date} → ${dailySpending[dailySpending.length - 1].date})`
+                  ? `Daily cash flow (${dailySpending[0].date} to ${dailySpending[dailySpending.length - 1].date})`
                   : 'Daily statement outflow intensity (past 28 days).'}
               </p>
             </div>
@@ -382,29 +391,40 @@ export default function Dashboard() {
           </div>
 
           {/* 4x7 Daily Heatmap Grid */}
-          <div className="grid grid-cols-7 gap-2.5 max-w-[320px] mx-auto">
-            {dailySpending.length > 0 ? (
-              dailySpending.map((cell) => (
-                <div
-                  key={cell.date}
-                  className={`w-9 h-9 rounded-md flex items-center justify-center text-xs font-light transition-all duration-300 hover:scale-110 cursor-pointer ${getCellBg(
-                    cell.amount
-                  )}`}
-                  title={`${cell.date}: ${formatCurrency(cell.amount, currency)}`}
-                >
-                  {cell.day}
+          <div className="max-w-[340px] mx-auto rounded-2xl border border-primary/20 bg-primary/[0.04] dark:bg-primary/[0.08] p-3 shadow-sm">
+            <div className="grid grid-cols-7 gap-2.5">
+              {dailySpending.length > 0 ? (
+                dailySpending.map((cell) => {
+                  const percentages = getCellPercentages(cell.amount, cell.income);
+                  return (
+                    <div key={cell.date} className="relative group z-0 hover:z-20">
+                      <div
+                        tabIndex={0}
+                        aria-label={`${cell.date}. Spent ${formatCurrency(cell.amount, currency)} (${percentages.spent.toFixed(1)}%). Earned ${formatCurrency(cell.income, currency)} (${percentages.earned.toFixed(1)}%).`}
+                        className="w-9 h-9 rounded-lg bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center text-xs font-semibold text-foreground border border-border/60 shadow-sm transition-all duration-200 group-hover:scale-110 group-hover:ring-2 group-hover:ring-primary/40 group-focus-within:scale-110 group-focus-within:ring-2 group-focus-within:ring-primary/50 cursor-pointer"
+                        style={getCellBg(percentages.spent, percentages.earned)}
+                      >
+                        {cell.day}
+                      </div>
+                      <div role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-48 -translate-x-1/2 rounded-lg border border-border bg-background p-3 text-xs shadow-xl group-hover:block group-focus-within:block">
+                        <p className="mb-2 font-semibold text-foreground">{cell.date}</p>
+                        <p className="flex justify-between gap-3 text-rose-500"><span>Spent</span><span className="font-semibold">{formatCurrency(cell.amount, currency)} ({percentages.spent.toFixed(1)}%)</span></p>
+                        <p className="mt-1 flex justify-between gap-3 text-emerald-500"><span>Earned</span><span className="font-semibold">{formatCurrency(cell.income, currency)} ({percentages.earned.toFixed(1)}%)</span></p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="col-span-7 p-6 text-center text-xs text-neutral-400 border border-dashed border-border rounded-xl">
+                  Awaiting statement records to generate daily spend heatmap.
                 </div>
-              ))
-            ) : (
-              <div className="col-span-7 p-6 text-center text-xs text-neutral-400 border border-dashed border-border rounded-xl">
-                Awaiting statement records to generate daily spend heatmap.
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          <div className="flex justify-between text-[11px] text-neutral-500 font-light max-w-[320px] mx-auto pt-2 border-t border-border">
-            <span>Low Spending</span>
-            <span>Peak Spending</span>
+          <div className="flex justify-between text-[11px] text-neutral-500 font-light max-w-[340px] mx-auto pt-2 border-t border-border">
+            <span>Spent share · red</span>
+            <span>Earned share · green</span>
           </div>
         </div>
 
@@ -424,9 +444,9 @@ export default function Dashboard() {
             {transactions.length === 0 ? (
               <div className="p-8 text-center text-neutral-500 font-light">
                 No statement records uploaded yet.
-                <Link to="/import" className="block text-xs text-primary font-bold mt-2 hover:underline">
+                <button onClick={() => setShowImport(true)} className="block text-xs text-primary font-bold mt-2 hover:underline mx-auto">
                   Upload PDF Bank Statement
-                </Link>
+                </button>
               </div>
             ) : (
               transactions.map((tx) => (
@@ -479,6 +499,16 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {showImport && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setShowImport(false);
+        }}>
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-background p-6 shadow-2xl">
+            <button onClick={() => setShowImport(false)} aria-label="Close import dialog" className="absolute right-5 top-5 z-10 rounded-full border border-border px-3 py-1 text-sm text-neutral-500 hover:text-foreground">Close</button>
+            <StatementImport onImported={() => { void fetchData(false); }} />
           </div>
         </div>
       )}

@@ -1,25 +1,67 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import axios from 'axios';
-import { Upload, FileText, CheckCircle2, AlertTriangle, RefreshCw, X, ShieldAlert, Check, HelpCircle } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, AlertTriangle, RefreshCw, X, ShieldAlert } from 'lucide-react';
 
-export default function ImportStatement() {
+interface StatementImportProps {
+  onImported?: () => void;
+}
+
+export default function StatementImport({ onImported }: StatementImportProps) {
   const [files, setFiles] = useState<File[]>([]);
+  const [checkingFiles, setCheckingFiles] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [successResult, setSuccessResult] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [savedRules, setSavedRules] = useState<string[]>([]);
+  const fileHashes = useRef(new Map<File, string>());
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selected = Array.from(e.target.files);
-      setFiles(prev => [...prev, ...selected]);
+      // Reset the input so selecting the same file again triggers this handler.
+      e.target.value = '';
+      setCheckingFiles(true);
       setErrorMsg('');
       setSuccessResult(null);
+
+      try {
+        const hashedFiles = await Promise.all(selected.map(async file => {
+          const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+          const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+          return { file, hash };
+        }));
+
+        const seenHashes = new Set(fileHashes.current.values());
+        const newFiles: File[] = [];
+        let duplicateCount = 0;
+
+        for (const { file, hash } of hashedFiles) {
+          if (seenHashes.has(hash)) {
+            duplicateCount++;
+            continue;
+          }
+          seenHashes.add(hash);
+          fileHashes.current.set(file, hash);
+          newFiles.push(file);
+        }
+
+        if (newFiles.length > 0) {
+          setFiles(prev => [...prev, ...newFiles]);
+        }
+        if (duplicateCount > 0) {
+          setErrorMsg(`${duplicateCount} duplicate file${duplicateCount === 1 ? ' was' : 's were'} skipped. Each statement can only be added once.`);
+        }
+      } catch {
+        setErrorMsg('Could not check the selected files for duplicates. Please try again.');
+      } finally {
+        setCheckingFiles(false);
+      }
     }
   };
 
   const removeFile = (index: number) => {
+    const removedFile = files[index];
+    if (removedFile) fileHashes.current.delete(removedFile);
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -59,25 +101,12 @@ export default function ImportStatement() {
       setProgress(100);
       setSuccessResult(response.data);
       setFiles([]);
+      fileHashes.current.clear();
+      onImported?.();
     } catch (err: any) {
       setErrorMsg(err.response?.data?.error || 'Failed to parse and process your statement batch.');
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleConfirmMapping = async (item: any, customEntity: string, customCategory: string) => {
-    try {
-      await axios.post('/api/transactions/rules', {
-        pattern: item.description,
-        entityName: customEntity || item.entityName,
-        entityType: item.entityType || 'merchant',
-        category: customCategory || item.category,
-        subcategory: item.subcategory || 'User Confirmed',
-      });
-      setSavedRules(prev => [...prev, item.description]);
-    } catch (err) {
-      console.error('Failed to save confirmed mapping', err);
     }
   };
 
@@ -101,14 +130,14 @@ export default function ImportStatement() {
               accept=".csv,.pdf,.xlsx,.xls"
               onChange={handleFileChange}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={uploading}
+              disabled={uploading || checkingFiles}
             />
             <div className="p-4 bg-primary/10 rounded-full text-primary mb-4">
               <Upload className="w-8 h-8" />
             </div>
             <div className="space-y-1">
               <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                Drag & drop bank statement files here, or click to browse
+                {checkingFiles ? 'Checking selected files for duplicates...' : 'Drag & drop bank statement files here, or click to browse'}
               </p>
               <p className="text-xs text-neutral-400">
                 Supports single or batch statements: PDF, CSV, Excel (.xlsx, .xls) up to 25MB each
@@ -220,14 +249,14 @@ export default function ImportStatement() {
               {/* Review & Feedback Section */}
               {successResult.reviewItems && successResult.reviewItems.length > 0 && (
                 <div className="space-y-3 pt-3 border-t border-border">
-                  <div className="flex items-center gap-2 text-purple-500 font-semibold text-xs">
-                    <ShieldAlert className="w-4 h-4" />
-                    <span>Transactions Requiring Verification or Missing Context ({successResult.reviewItems.length})</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-purple-500 font-semibold text-xs">
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>Transactions Requiring Verification or Missing Context ({successResult.reviewItems.length})</span>
+                    </div>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {successResult.reviewItems.map((rev: any, idx: number) => {
-                      const isConfirmed = savedRules.includes(rev.description);
-                      return (
+                    {successResult.reviewItems.map((rev: any, idx: number) => (
                         <div key={idx} className="p-3 rounded-xl border border-purple-500/20 bg-purple-500/5 text-xs space-y-2">
                           <div className="flex justify-between items-start gap-2">
                             <div>
@@ -241,23 +270,9 @@ export default function ImportStatement() {
                                 </p>
                               )}
                             </div>
-                            {isConfirmed ? (
-                              <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-500 font-bold text-[10px] flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Confirmed
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmMapping(rev, rev.entityName, rev.category)}
-                                className="px-2.5 py-1 rounded-md bg-purple-600 hover:bg-purple-700 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition-all"
-                              >
-                                Confirm & Learn
-                              </button>
-                            )}
                           </div>
                         </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
               )}
@@ -266,7 +281,7 @@ export default function ImportStatement() {
 
           <button
             type="submit"
-            disabled={files.length === 0 || uploading}
+            disabled={files.length === 0 || uploading || checkingFiles}
             className="w-full py-3.5 rounded-full text-sm font-semibold text-white bg-primary hover:bg-primary-dark disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-premium"
           >
             {uploading ? (

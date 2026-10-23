@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
+import { useNotificationStore } from './notificationStore';
 
 export type RiskProfile = 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE';
 
@@ -77,6 +78,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('finsight_token');
     localStorage.removeItem('finsight_refresh_token');
     localStorage.removeItem('finsight_user');
+    useNotificationStore.getState().resetNotifications();
 
     set({
       token: null,

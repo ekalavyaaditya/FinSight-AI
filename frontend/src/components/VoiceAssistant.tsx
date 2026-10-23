@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
-import { Mic, MicOff, MessageSquare, X, Play, Volume2, Sparkles, Send } from 'lucide-react';
+import { Mic, MicOff, MessageSquare, X, Volume2, Sparkles } from 'lucide-react';
 
 export default function VoiceAssistant() {
   const [open, setOpen] = useState(false);

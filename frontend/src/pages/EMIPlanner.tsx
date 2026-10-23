@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { DollarSign, Percent, Calendar, HelpCircle, ArrowUpRight, TrendingDown } from 'lucide-react';
+import { DollarSign, Percent, Calendar } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function EMIPlanner() {
