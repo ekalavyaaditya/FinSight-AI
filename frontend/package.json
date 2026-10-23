@@ -7,10 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "start:all": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run dev:ai\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:ai": "cd ai && python3 -m uvicorn main:app --reload --port 8000"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.1.2",
@@ -49,7 +46,6 @@
     "@types/three": "^0.162.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
-    "concurrently": "^8.2.2",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",

@@ -1,8 +1,13 @@
+import warnings
+warnings.filterwarnings("ignore", message="invalid value encountered", category=RuntimeWarning)
+warnings.filterwarnings("ignore", message=".*Numpy built with MINGW-W64.*")
+warnings.filterwarnings("ignore", message=".*CRASHES ARE TO BE EXPECTED.*")
+
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from classification.classifier import classifier_instance
 from prediction.predictor import FinancialPredictor
@@ -11,7 +16,7 @@ from services.llm_service import LLMService
 app = FastAPI(
     title="FinSight AI Service",
     description="FastAPI predictive analytics and machine learning service for FinSight AI",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # Enable CORS for communication from the Node backend or Web client
@@ -30,6 +35,17 @@ class ClassifyRequest(BaseModel):
 
 class ClassifyResponse(BaseModel):
     category: str
+
+class TransactionBatchItem(BaseModel):
+    id: Optional[str] = None
+    narration: str
+    amount: Optional[float] = 0.0
+    transactionType: Optional[str] = None
+    paymentMethod: Optional[str] = None
+    currency: Optional[str] = None
+
+class BatchClassifyRequest(BaseModel):
+    transactions: List[TransactionBatchItem]
 
 class TransactionItem(BaseModel):
     date: str
@@ -64,10 +80,18 @@ def classify_transaction(payload: ClassifyRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/batch-classify")
+def batch_classify(payload: BatchClassifyRequest):
+    try:
+        tx_dicts = [t.model_dump() for t in payload.transactions]
+        results = LLMService.batch_classify_transactions(tx_dicts)
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/predict")
 def predict_trends(payload: PredictRequest):
     try:
-        # Convert list of pydantic models to dicts
         tx_dicts = [tx.model_dump() for tx in payload.transactions]
         prediction = FinancialPredictor.predict_spending(tx_dicts)
         return prediction
@@ -94,4 +118,4 @@ def nlp_chat(payload: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

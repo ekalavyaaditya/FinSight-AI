@@ -1,53 +1,28 @@
 import { PrismaClient } from '@prisma/client';
-import { createClient } from 'redis';
 
 const prisma = new PrismaClient();
 
-let redisClient: any = null;
+// Simple in-memory cache (no Redis dependency required)
+const memoryStore = new Map<string, { value: string; expiresAt: number | null }>();
 
-if (process.env.REDIS_URL) {
-  redisClient = createClient({ url: process.env.REDIS_URL });
-  redisClient.on('error', (err: any) => console.error('Redis Client Error', err));
-  redisClient.connect().catch((err: any) => {
-    console.warn('Redis connection failed, falling back to memory cache:', err.message);
-    redisClient = null;
-  });
-}
-
-// Resilient caching wrapper
 export const cache = {
   async get(key: string): Promise<string | null> {
-    if (redisClient) {
-      try {
-        return await redisClient.get(key);
-      } catch {
-        return null;
-      }
+    const entry = memoryStore.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt && Date.now() > entry.expiresAt) {
+      memoryStore.delete(key);
+      return null;
     }
-    return null;
+    return entry.value;
   },
   async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
-    if (redisClient) {
-      try {
-        if (ttlSeconds) {
-          await redisClient.set(key, value, { EX: ttlSeconds });
-        } else {
-          await redisClient.set(key, value);
-        }
-      } catch {
-        // Fallback silently
-      }
-    }
+    const expiresAt = ttlSeconds ? Date.now() + ttlSeconds * 1000 : null;
+    memoryStore.set(key, { value, expiresAt });
   },
   async del(key: string): Promise<void> {
-    if (redisClient) {
-      try {
-        await redisClient.del(key);
-      } catch {
-        // Fallback silently
-      }
-    }
+    memoryStore.delete(key);
   }
 };
 
 export { prisma };
+

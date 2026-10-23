@@ -11,18 +11,14 @@ class FinancialPredictor:
         [{"date": "2025-01-01", "amount": -10.5, "category": "FOOD", "description": "..."}]
         Computes financial predictions, confidence score, and insights.
         """
-        if not transactions_data or len(transactions_data) < 3:
+        if not transactions_data:
             return {
-                "predicted_expense": 2500.0,
-                "predicted_savings": 500.0,
-                "confidence_score": 0.5,
-                "budget_risk": "MEDIUM",
-                "risk_explanation": "Insufficient transaction history to establish standard variance. Generic fallback active.",
-                "trends": [
-                    {"month": "Prior Month 2", "amount": 2400.0},
-                    {"month": "Prior Month 1", "amount": 2450.0},
-                    {"month": "Predicted Next", "amount": 2500.0}
-                ]
+                "predicted_expense": 0.0,
+                "predicted_savings": 0.0,
+                "confidence_score": 0.0,
+                "budget_risk": "LOW",
+                "risk_explanation": "No transaction history available yet. Upload a statement to activate ML predictions.",
+                "trends": []
             }
 
         df = pd.DataFrame(transactions_data)
@@ -53,19 +49,19 @@ class FinancialPredictor:
             model.fit(X, y)
 
             next_month_idx = len(monthly_exp)
-            predicted_expense = max(100.0, float(model.predict([[next_month_idx]])[0]))
+            predicted_expense = max(0.0, float(model.predict([[next_month_idx]])[0]))
             # Calculate standard deviation/variance to measure confidence
             std_dev = y.std()
-            if std_dev > 0:
+            if std_dev > 0 and y.mean() > 0:
                 coef_variation = std_dev / y.mean()
                 confidence = max(0.4, min(0.95, 1.0 - (coef_variation * 0.3)))
         else:
             # Fallback to sum of expenses in the dataset
-            predicted_expense = expenses_df['abs_amount'].sum()
-            confidence = 0.60
+            predicted_expense = expenses_df['abs_amount'].sum() if len(expenses_df) > 0 else 0.0
+            confidence = 0.50
 
-        # Predict Income (or fallback to average)
-        total_income = income_df['abs_amount'].sum() if len(income_df) > 0 else 3000.0
+        # Predict Income
+        total_income = income_df['abs_amount'].sum() if len(income_df) > 0 else 0.0
         predicted_income = income_df['abs_amount'].mean() if len(income_df) > 0 else total_income
 
         # Calculate Savings
@@ -74,12 +70,16 @@ class FinancialPredictor:
         # Budget Risk Rating
         risk_level = "LOW"
         risk_explanation = "Spending is well within income thresholds. Budget remains secure."
-        if predicted_expense > predicted_income * 0.9:
-            risk_level = "HIGH"
-            risk_explanation = "Expenses are projected to exceed 90% of your current income. High risk of capital deficit."
-        elif predicted_expense > predicted_income * 0.7:
+        if predicted_income > 0:
+            if predicted_expense > predicted_income * 0.9:
+                risk_level = "HIGH"
+                risk_explanation = "Expenses are projected to exceed 90% of your current income. High risk of capital deficit."
+            elif predicted_expense > predicted_income * 0.7:
+                risk_level = "MEDIUM"
+                risk_explanation = "Expenses are rising. Savings allocation is constrained below optimal safety ratios."
+        elif predicted_expense > 0:
             risk_level = "MEDIUM"
-            risk_explanation = "Expenses are rising. Savings allocation is constrained below optimal safety ratios."
+            risk_explanation = "Expenses logged with no corresponding income recorded yet."
 
         # Compile trend history for the charts
         trends_data = []
@@ -90,12 +90,13 @@ class FinancialPredictor:
                     "amount": round(float(row['abs_amount']), 2)
                 })
 
-        # Append predicted month
-        future_date = datetime.now() + timedelta(days=30)
-        trends_data.append({
-            "month": future_date.strftime("%Y-%m") + " (Est)",
-            "amount": round(predicted_expense, 2)
-        })
+        # Append predicted month only if historical expenses exist
+        if len(monthly_exp) > 0 and predicted_expense > 0:
+            future_date = datetime.now() + timedelta(days=30)
+            trends_data.append({
+                "month": future_date.strftime("%Y-%m") + " (Est)",
+                "amount": round(predicted_expense, 2)
+            })
 
         return {
             "predicted_expense": round(predicted_expense, 2),

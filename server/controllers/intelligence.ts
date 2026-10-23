@@ -350,32 +350,69 @@ export const getAIPredictions = async (req: AuthenticatedRequest, res: Response)
       orderBy: { date: 'asc' },
     });
 
-    // Call FastAPI Service
-    const response = await axios.post(`${AI_SERVICE_URL}/predict`, {
-      transactions: transactions.map(t => ({
-        date: t.date.toISOString().split('T')[0],
-        description: t.description,
-        amount: t.amount,
-        category: t.category,
-      })),
+    if (transactions.length === 0) {
+      res.status(200).json({
+        predicted_expense: 0,
+        predicted_savings: 0,
+        confidence_score: 0,
+        budget_risk: 'LOW',
+        risk_explanation: 'Upload bank statements to activate ML trend forecasting.',
+        trends: [],
+      });
+      return;
+    }
+
+    try {
+      // Call FastAPI Service
+      const response = await axios.post(`${AI_SERVICE_URL}/predict`, {
+        transactions: transactions.map(t => ({
+          date: t.date.toISOString().split('T')[0],
+          description: t.description,
+          amount: t.amount,
+          category: t.category,
+        })),
+      }, { timeout: 5000 });
+
+      res.status(200).json(response.data);
+      return;
+    } catch (aiErr: any) {
+      console.warn('FastAPI Service unreachable, calculating from statement history:', aiErr.message);
+    }
+
+    // Dynamic fallback calculated from actual user transactions
+    const debits = transactions.filter(t => t.amount < 0);
+    const credits = transactions.filter(t => t.amount > 0);
+    const totalExpenses = debits.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const totalIncome = credits.reduce((sum, t) => sum + t.amount, 0);
+
+    const monthlyMap: { [m: string]: number } = {};
+    debits.forEach(t => {
+      const mStr = t.date.toISOString().slice(0, 7);
+      monthlyMap[mStr] = (monthlyMap[mStr] || 0) + Math.abs(t.amount);
     });
 
-    res.status(200).json(response.data);
-  } catch (error: any) {
-    console.error('FastAPI Prediction call failure, triggering fallback:', error.message);
-    // Graceful offline fallback in TS
+    const months = Object.keys(monthlyMap).sort();
+    const trends = months.map(m => ({
+      month: m,
+      amount: parseFloat(monthlyMap[m].toFixed(2)),
+    }));
+
+    const avgExpense = months.length > 0 ? totalExpenses / months.length : totalExpenses;
+    const avgIncome = months.length > 0 ? totalIncome / months.length : totalIncome;
+    const predSavings = Math.max(0, avgIncome - avgExpense);
+
     res.status(200).json({
-      predicted_expense: 2850.0,
-      predicted_savings: 820.0,
-      confidence_score: 0.78,
-      budget_risk: 'MEDIUM',
-      risk_explanation: 'Active sandbox fallback mode in effect. Predictive trends estimated from standard distribution.',
-      trends: [
-        { month: '2025-01', amount: 2600.0 },
-        { month: '2025-02', amount: 2750.0 },
-        { month: '2025-03 (Est)', amount: 2850.0 },
-      ],
+      predicted_expense: parseFloat(avgExpense.toFixed(2)),
+      predicted_savings: parseFloat(predSavings.toFixed(2)),
+      confidence_score: months.length >= 2 ? 0.75 : 0.5,
+      budget_risk: avgExpense > avgIncome * 0.9 ? 'HIGH' : avgExpense > avgIncome * 0.7 ? 'MEDIUM' : 'LOW',
+      risk_explanation: avgExpense > avgIncome
+        ? 'Expenses are currently exceeding inflow. Consider reviewing high category outflows.'
+        : 'Outflows are contained within income parameters.',
+      trends,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compute predictions' });
   }
 };
 
@@ -389,27 +426,84 @@ export const getAIInsights = async (req: AuthenticatedRequest, res: Response): P
       take: 50,
     });
 
-    const response = await axios.post(`${AI_SERVICE_URL}/insights`, {
-      transactions: transactions.map(t => ({
-        date: t.date.toISOString().split('T')[0],
-        description: t.description,
-        amount: t.amount,
-        category: t.category,
-      })),
-      creditScore: user?.creditScore || 680,
-    });
+    if (transactions.length === 0) {
+      res.status(200).json({
+        insights: [],
+        model: 'none',
+      });
+      return;
+    }
 
-    res.status(200).json(response.data);
-  } catch (error: any) {
-    console.warn('FastAPI Insights call failure, running offline fallback:', error.message);
+    try {
+      const response = await axios.post(`${AI_SERVICE_URL}/insights`, {
+        transactions: transactions.map(t => ({
+          date: t.date.toISOString().split('T')[0],
+          description: t.description,
+          amount: t.amount,
+          category: t.category,
+        })),
+        creditScore: user?.creditScore || 680,
+      }, { timeout: 5000 });
+
+      res.status(200).json(response.data);
+      return;
+    } catch (aiErr: any) {
+      console.warn('FastAPI Insights call failed, deriving insights from active statement data:', aiErr.message);
+    }
+
+    // Dynamic heuristics from actual user data
+    const debits = transactions.filter(t => t.amount < 0);
+    const totalSpent = debits.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const diningSpent = debits
+      .filter(t => t.category === 'FOOD')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const subs = debits.filter(t => /netflix|spotify|prime|sub/i.test(t.description));
+
+    const insights: any[] = [];
+
+    if (subs.length > 0) {
+      insights.push({
+        title: 'Recurring Subscriptions Tracked',
+        content: `Identified ${subs.length} active digital subscription bills. Regularly audit unused plans to free up capital.`,
+        category: 'SUBSCRIPTION',
+        severity: 'LOW',
+      });
+    }
+
+    if (totalSpent > 0 && diningSpent / totalSpent > 0.25) {
+      insights.push({
+        title: 'Elevated Food & Dining Outflow',
+        content: `Dining represents ${(diningSpent / totalSpent * 100).toFixed(0)}% of your statement outflows. Moderating meal delivery can boost savings.`,
+        category: 'OVERSPENDING',
+        severity: 'MEDIUM',
+      });
+    }
+
+    const score = user?.creditScore || 650;
+    if (score < 700) {
+      insights.push({
+        title: 'Credit Health Optimization',
+        content: `Credit score stands at ${score}. Settle monthly liabilities ahead of billing cycles to keep utilization under 30%.`,
+        category: 'BUDGET',
+        severity: 'HIGH',
+      });
+    }
+
+    if (insights.length === 0 && totalSpent > 0) {
+      insights.push({
+        title: 'Spending Velocity Normal',
+        content: 'Outflows appear balanced across categories without major single-category spikes.',
+        category: 'BUDGET',
+        severity: 'LOW',
+      });
+    }
+
     res.status(200).json({
-      insights: [
-        { title: 'Subtle Subscription Leakage Detected', content: 'You have multiple digital plans (like Netflix and Spotify). Trimming unused accounts yields direct capital savings.', category: 'SUBSCRIPTION', severity: 'LOW' },
-        { title: 'Elevated Dining Out Volatility', content: 'Spending on restaurant and meals is high this period. Home prep can boost savings yield by 20%.', category: 'OVERSPENDING', severity: 'MEDIUM' },
-        { title: 'Actionable Credit Optimization', content: 'Pay card balances before statement close dates to aggressively lower utilization metrics.', category: 'BUDGET', severity: 'HIGH' },
-      ],
-      model: 'local-fallback',
+      insights,
+      model: 'local-statement-heuristics',
     });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate financial insights' });
   }
 };
 

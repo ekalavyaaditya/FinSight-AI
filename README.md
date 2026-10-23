@@ -1,6 +1,6 @@
 # FinSight AI Platform
 
-FinSight AI is a comprehensive financial insights and multi-service platform. It integrates a modern frontend, a robust Express.js backend, and an intelligent Python AI service, all containerized with Docker and orchestrated via Docker Compose.
+FinSight AI is a comprehensive financial insights and multi-service platform. It integrates a modern frontend, a robust Express.js backend, and an intelligent Python AI service — all running locally for development.
 
 ---
 
@@ -10,8 +10,8 @@ The system consists of three main service layers, along with database and cachin
 
 1. **Frontend (React SPA)**
    - **Tech Stack:** React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Recharts, Zustand, Framer Motion.
-   - **Deployment:** Served via Nginx on port `3000`.
-   - **Source Directory:** Root directory (excluding `/server` and `/ai`).
+   - **Port:** `5173` (Vite dev server)
+   - **Source Directory:** `/frontend`
 
 2. **Backend Server (Express.js)**
    - **Tech Stack:** Node.js (v22), Express, TypeScript, Prisma ORM, PostgreSQL, Redis.
@@ -24,74 +24,71 @@ The system consists of three main service layers, along with database and cachin
    - **Source Directory:** `/ai`
 
 4. **Databases & Cache**
-   - **PostgreSQL:** Port `5432` (relational database for users, transactions, and settings).
-   - **Redis:** Port `6379` (caching, rate-limiting, and session storage).
+   - **PostgreSQL:** Port `5432` (relational database for users, transactions, and settings). Install and run locally.
+   - **Redis (optional):** Port `6379` (caching). The server falls back gracefully if Redis is unavailable.
 
 ---
 
-## Quick Start (Docker Compose)
+## Prerequisites
 
-To build and start all services in production mode:
-
-```bash
-docker-compose up --build
-```
-
-This will automatically:
-- Start PostgreSQL and Redis instances.
-- Build the server image and run DB migrations with Prisma.
-- Build the AI service.
-- Build and serve the React frontend through an Nginx proxy.
+- Node.js (v22+)
+- Python (v3.12+)
+- PostgreSQL (v15+ recommended) — installed and running locally
+- Redis (optional) — installed and running locally
 
 ---
 
 ## Development Setup
 
-If you prefer to run services individually for local development:
+### 1. Database
 
-### Prerequisites
-- Node.js (v22+)
-- Python (v3.12+)
-- Docker (for database/redis instances)
+Ensure PostgreSQL is running locally. Create the database if it doesn't already exist:
 
-### 1. Database and Cache
-Start the local PostgreSQL and Redis services:
-```bash
-docker-compose up -d db redis
+```sql
+CREATE DATABASE finsight_db;
 ```
 
 ### 2. Backend Server
-Navigate to the `/server` directory:
+
 ```bash
 cd server
+cp .env.example .env      # edit .env with your local Postgres credentials
 npm install
+npx prisma generate
+npx prisma db push         # apply schema to local database
 npm run dev
-```
-To run backend tests:
-```bash
-npm run test
 ```
 
 ### 3. AI Service
-Navigate to the `/ai` directory:
+
 ```bash
 cd ai
 python -m venv venv
-source venv/bin/activate # or venv\Scripts\activate on Windows
+venv\Scripts\activate       # or source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8000
 ```
 
 ### 4. Frontend Application
-From the repository root:
+
 ```bash
+cd frontend
 npm install
 npm run dev
+```
+
+---
+
+## Running Tests
+
+```bash
+cd server
+npm run test
 ```
 
 ---
 
 ## Development Best Practices
 
-- **Build Optimization:** The project contains `.dockerignore` files configured at the root, in `/server`, and `/ai`. These exclude local dependencies (`node_modules`), build artifacts (`dist`), and Python caches from being sent to Docker, drastically speeding up container builds and preventing resource exhaustion.
-- **Testing:** Always run test suites before submitting pull requests. For backend verification, use `npm run test` inside the `/server` folder.
+- **Environment Variables:** Copy `.env.example` to `.env` in the `/server` directory and fill in your local credentials before running.
+- **Testing:** Always run the test suite before submitting pull requests.

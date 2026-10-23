@@ -530,7 +530,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-border py-12 px-6 md:px-12 text-center text-xs text-neutral-500 font-light">
+      <footer className="relative z-10 border-t border-border py-3 px-6 md:px-12 text-center text-xs text-neutral-500 font-light">
         <p>
           © {new Date().getFullYear()} FinSight AI Inc. Designed with premium
           Stripe-like aesthetics. Fully secure.

@@ -44,6 +44,8 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/intelligence', intelligenceRoutes);
 app.use('/api/admin', adminRoutes);
 
+import { prisma } from './config/db';
+
 // Global Error Handler Middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled System Error:', err);
@@ -54,11 +56,21 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 // Start listening
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
+    let dbStatus = 'Checking...';
+    try {
+      await prisma.$connect();
+      dbStatus = 'Connected';
+    } catch (error: any) {
+      dbStatus = 'Disconnected (Error)';
+      console.error('Prisma connection error:', error.message || error);
+    }
+
     console.log(`=========================================`);
     console.log(`🚀 FinSight AI Server started successfully`);
     console.log(`📡 Port: ${PORT}`);
     console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🗄️  Database: ${dbStatus}`);
     console.log(`=========================================`);
   });
 }

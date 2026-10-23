@@ -3,34 +3,42 @@ import multer from 'multer';
 import {
   uploadStatement,
   getTransactions,
+  getTransactionsSummary,
   createTransaction,
   updateTransaction,
   deleteTransaction,
   bulkUpdateTransactions,
   bulkDeleteTransactions,
   exportTransactionsCSV,
+  saveMerchantRule,
+  getMerchantRules,
 } from '../controllers/transactions';
 import { authenticateJWT } from '../middleware/auth';
 import { apiRateLimiter } from '../middleware/security';
 
 const router = Router();
 
-// Multer memory-storage engine
+// Multer memory-storage engine supporting single and multi-statement batch uploads
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // Max 10MB statements
+  limits: { fileSize: 25 * 1024 * 1024 }, // Max 25MB per file
 });
 
 // Attach protected middleware
 router.use(authenticateJWT as any);
 
 // Routes
-router.post('/upload', upload.single('statement'), uploadStatement as any);
+router.post('/upload', upload.any(), uploadStatement as any);
+router.get('/summary', getTransactionsSummary as any);
 router.get('/', apiRateLimiter, getTransactions as any);
 router.post('/', createTransaction as any);
 router.put('/bulk', bulkUpdateTransactions as any);
 router.delete('/bulk', bulkDeleteTransactions as any);
 router.get('/export/csv', exportTransactionsCSV as any);
+
+// Merchant Confirmation Memory Rules
+router.post('/rules', saveMerchantRule as any);
+router.get('/rules', getMerchantRules as any);
 
 router.put('/:id', updateTransaction as any);
 router.delete('/:id', deleteTransaction as any);

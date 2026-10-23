@@ -5,10 +5,10 @@
   "main": "server.ts",
   "scripts": {
     "start": "ts-node server.ts",
-    "dev": "nodemon --watch '*' --exec \"ts-node\" server.ts",
+    "dev": "nodemon --ext ts,json --ignore node_modules --exec \"ts-node --transpile-only\" server.ts",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "test": "jest --preset ts-jest --detectOpenHandles --forceExit"
+    "test": "jest --preset ts-jest --detectOpenHandles --forceExit --runInBand"
   },
   "dependencies": {
     "@prisma/client": "^5.11.0",

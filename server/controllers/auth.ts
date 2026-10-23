@@ -317,7 +317,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       data: { resetToken, resetExpiresAt },
     });
 
-    console.log(`[SANDBOX PASSWORD RESET] URL: http://localhost:3000/reset-password?token=${resetToken}`);
+    console.log(`[SANDBOX PASSWORD RESET] URL: http://localhost:5000/reset-password?token=${resetToken}`);
 
     res.status(200).json({ message: 'If that email is registered, a reset link has been dispatched.' });
   } catch (error: any) {
