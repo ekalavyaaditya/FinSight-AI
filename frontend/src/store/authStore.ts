@@ -27,8 +27,22 @@ interface AuthState {
   checkSession: () => Promise<void>;
 }
 
+function getStoredUser(): User | null {
+  try {
+    const storedUser = localStorage.getItem('finsight_user');
+    return storedUser ? JSON.parse(storedUser) as User : null;
+  } catch {
+    try {
+      localStorage.removeItem('finsight_user');
+    } catch {
+      // Storage may be unavailable; keep the app usable without persisted user data.
+    }
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: JSON.parse(localStorage.getItem('finsight_user') || 'null'),
+  user: getStoredUser(),
   token: localStorage.getItem('finsight_token'),
   refreshToken: localStorage.getItem('finsight_refresh_token'),
   isAuthenticated: !!localStorage.getItem('finsight_token'),

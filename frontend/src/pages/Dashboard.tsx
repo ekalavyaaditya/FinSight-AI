@@ -3,6 +3,15 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import StatementImport from '../components/StatementImport';
 import {
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  LinearScale,
+  Tooltip as ChartTooltip,
+} from 'chart.js';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import {
   TrendingUp,
   TrendingDown,
   DollarSign,
@@ -15,18 +24,8 @@ import {
   BarChart3,
   Calendar,
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip);
 
 interface DashboardSummary {
   balance: number;
@@ -154,7 +153,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchData}
+            onClick={() => { void fetchData(); }}
             title="Refresh from API"
             className="glass p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all text-neutral-500 hover:text-foreground"
           >
@@ -279,23 +278,48 @@ export default function Dashboard() {
 
           <div className="h-64 w-full">
             {barData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                  <XAxis dataKey="name" stroke="#888888" fontSize={11} />
-                  <YAxis stroke="#888888" fontSize={11} />
-                  <Tooltip
-                    contentStyle={{
+              <Bar
+                data={{
+                  labels: barData.map((item: any) => item.name),
+                  datasets: [{
+                    label: 'Expenses',
+                    data: barData.map((item: any) => item.Expenses),
+                    backgroundColor: '#0070f3',
+                    borderRadius: 4,
+                    borderSkipped: false,
+                  }],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
                       backgroundColor: 'rgba(15,15,20,0.9)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '8px',
-                      color: '#fff',
-                    }}
-                    formatter={(val: any) => [formatCurrency(Number(val), currency), 'Expenses']}
-                  />
-                  <Bar dataKey="Expenses" fill="#0070f3" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+                      borderColor: 'rgba(255,255,255,0.08)',
+                      borderWidth: 1,
+                      callbacks: {
+                        label: (context) => `Expenses: ${formatCurrency(Number(context.parsed.y), currency)}`,
+                      },
+                    },
+                  },
+                  scales: {
+                    x: {
+                      grid: { display: false },
+                      ticks: { color: '#888888', font: { size: 11 } },
+                    },
+                    y: {
+                      beginAtZero: true,
+                      grid: { color: 'rgba(136,136,136,0.15)' },
+                      ticks: {
+                        color: '#888888',
+                        font: { size: 11 },
+                        callback: (value) => formatCurrency(Number(value), currency),
+                      },
+                    },
+                  },
+                }}
+              />
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center border border-dashed border-border rounded-xl p-6 text-center">
                 <BarChart3 className="w-10 h-10 text-neutral-400 mb-2" />
@@ -332,24 +356,35 @@ export default function Dashboard() {
 
           <div className="h-48 w-full flex items-center justify-center">
             {pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {pieData.map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val: any) => [formatCurrency(Number(val), currency), 'Amount']} />
-                </PieChart>
-              </ResponsiveContainer>
+              <Doughnut
+                data={{
+                  labels: pieData.map((entry) => entry.name),
+                  datasets: [{
+                    data: pieData.map((entry) => entry.value),
+                    backgroundColor: pieData.map((_entry, index) => COLORS[index % COLORS.length]),
+                    borderWidth: 0,
+                    hoverOffset: 4,
+                    spacing: 4,
+                  }],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  cutout: '75%',
+                  radius: '95%',
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      backgroundColor: 'rgba(15,15,20,0.9)',
+                      borderColor: 'rgba(255,255,255,0.08)',
+                      borderWidth: 1,
+                      callbacks: {
+                        label: (context) => `${context.label ?? 'Amount'}: ${formatCurrency(context.parsed, currency)}`,
+                      },
+                    },
+                  },
+                }}
+              />
             ) : (
               <div className="h-full w-full flex flex-col items-center justify-center border border-dashed border-border rounded-xl p-4 text-center">
                 <PieIcon className="w-8 h-8 text-neutral-400 mb-2" />

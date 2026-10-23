@@ -30,11 +30,17 @@ export default function LandingPage() {
       0.1,
       1000,
     );
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      alpha: true,
-      antialias: true,
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas: canvasRef.current,
+        alpha: true,
+        antialias: true,
+      });
+    } catch (error) {
+      console.warn('WebGL is unavailable; showing the landing page without its animated background.', error);
+      return;
+    }
 
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -102,9 +108,10 @@ export default function LandingPage() {
     window.addEventListener("resize", handleResize);
 
     const clock = new THREE.Clock();
+    let animationFrameId = 0;
 
     const animate = () => {
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
 
       const elapsedTime = clock.getElapsedTime();
 
@@ -125,8 +132,13 @@ export default function LandingPage() {
     animate();
 
     return () => {
+      cancelAnimationFrame(animationFrameId);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);
+      particlesGeometry.dispose();
+      particlesMaterial.dispose();
+      sphereGeometry.dispose();
+      sphereMaterial.dispose();
       renderer.dispose();
     };
   }, []);
