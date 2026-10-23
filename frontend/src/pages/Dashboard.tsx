@@ -7,6 +7,7 @@ import {
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  Legend,
   LinearScale,
   Tooltip as ChartTooltip,
 } from 'chart.js';
@@ -25,7 +26,7 @@ import {
   Calendar,
 } from 'lucide-react';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, ChartTooltip, Legend);
 
 interface DashboardSummary {
   balance: number;

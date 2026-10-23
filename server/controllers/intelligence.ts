@@ -3,8 +3,6 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/db';
 import axios from 'axios';
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai:8000';
-
 // ==========================================
 // 1. SAVINGS PLANNER GOALS CRUD
 // ==========================================
@@ -523,23 +521,30 @@ export const queryAIChat = async (req: AuthenticatedRequest, res: Response): Pro
       take: 100,
     });
 
-    const response = await axios.post(`${AI_SERVICE_URL}/chat`, {
-      query,
-      transactions: transactions.map(t => ({
-        date: t.date.toISOString().split('T')[0],
-        description: t.description,
-        amount: t.amount,
-        category: t.category,
-      })),
-    });
+    const expenses = transactions.filter(t => t.amount < 0);
+    const income = transactions.filter(t => t.amount > 0).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const spending = expenses.reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0);
+    const largestExpense = expenses.reduce<typeof expenses[number] | null>(
+      (largest, transaction) => !largest || Math.abs(transaction.amount) > Math.abs(largest.amount) ? transaction : largest,
+      null,
+    );
+    const normalizedQuery = String(query).toLowerCase();
+    let answer = `Across your ${transactions.length} most recent transactions, recorded income is ${income.toFixed(2)} and spending is ${spending.toFixed(2)}.`;
 
-    res.status(200).json(response.data);
+    if (transactions.length === 0) {
+      answer = 'I do not have any transactions to analyze yet. Add or import transactions, then ask me about your spending or savings.';
+    } else if (/\b(biggest|largest|most|spend|expense)\b/.test(normalizedQuery) && largestExpense) {
+      answer = `Your largest recorded expense is ${Math.abs(largestExpense.amount).toFixed(2)} for ${largestExpense.description}. Total spending across your ${expenses.length} recorded expenses is ${spending.toFixed(2)}.`;
+    } else if (/\b(save|saving|surplus)\b/.test(normalizedQuery)) {
+      const surplus = income - spending;
+      const savingsRate = income > 0 ? (surplus / income) * 100 : 0;
+      answer = `Your recorded income is ${income.toFixed(2)} and spending is ${spending.toFixed(2)}, leaving a ${surplus.toFixed(2)} balance (${savingsRate.toFixed(1)}% of income). Review recurring or discretionary expenses to find room to save.`;
+    }
+
+    res.status(200).json({ answer, engine: 'local-transaction-summary' });
   } catch (error: any) {
-    console.error('FastAPI Chat call failure, triggering local conversation heuristics:', error.message);
-    res.status(200).json({
-      answer: "I'm operating in active safety offline mode. I see you have active portfolio listings. Please establish secure connections with your bank statement PDF to get direct feedback, or type 'spend' / 'save' for customized guidelines.",
-      engine: 'local-chat-fallback',
-    });
+    console.error('Local chat request failed:', error.message);
+    res.status(500).json({ error: 'Unable to generate a response from your transactions.' });
   }
 };
 
